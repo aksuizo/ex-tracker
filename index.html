@@ -50,7 +50,7 @@ nav button.on{color:var(--acc);font-weight:700}
 <div class="toast" id="toast"></div>
 <script>
 const $=s=>document.querySelector(s);
-const DEF={user:'',url:'',budget:0,cats:['Groceries','Food Delivery','Fuel','DEWA','Telecom','Internet','Other'],srcs:['Aaron Salary','Faith Salary','Aaron CC','Faith CC','Others'],exp:[],rec:[],q:[],tab:'add',src:'',cat:'',dash:'cat',scope:'all',cb:{}};
+const DEF={user:'',url:'',budget:0,cats:['Groceries','Food Delivery','Fuel','DEWA','Telecom','Internet','Other'],srcs:['Aaron Salary','Faith Salary','Aaron CC','Faith CC','Others'],exp:[],rec:[],q:[],tab:'add',src:'',cat:'',dash:'cat',scope:'all',cb:{},users:[],loaded:false};
 let S=Object.assign({},DEF,JSON.parse(localStorage.getItem('spend')||'{}'));
 const save=()=>localStorage.setItem('spend',JSON.stringify(S));
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
@@ -59,9 +59,12 @@ const today=()=>new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOStr
 const aed=n=>'AED '+Math.round(n*100/100).toLocaleString('en-US',{maximumFractionDigits:2});
 const toast=t=>{const e=$('#toast');e.textContent=t;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),1800)};
 const sum=a=>a.reduce((x,e)=>x+e.amount,0);
-const cfg=()=>({rec:S.rec,budget:S.budget,cats:S.cats,srcs:S.srcs,cb:S.cb});
+const cfg=()=>({rec:S.rec,budget:S.budget,cats:S.cats,srcs:S.srcs,cb:S.cb,users:S.users});
 const mo=()=>today().slice(0,7);
-const queue=op=>{if(op.a==='cfg')S.q=S.q.filter(o=>o.a!=='cfg');S.q.push(op);save();flush()};
+const members=()=>[...new Set([...S.users,...S.exp.map(e=>e.user)])].filter(u=>u&&u!=='Recurring');
+const choose=u=>{S.user=u;if(!S.users.includes(u)){S.users.push(u);queue({a:'cfg',cfg:cfg()})}S.tab='dash';save();render()};
+const queue=op=>{if(op.a==='cfg'&&S.url&&!S.loaded){toast('Still loading shared settings. Try again in a moment.');return}
+  if(op.a==='cfg')S.q=S.q.filter(o=>o.a!=='cfg');S.q.push(op);save();flush()};
 
 /* ---------- sync ---------- */
 let busy=false;
@@ -78,8 +81,8 @@ async function pull(){
   await flush();if(S.q.length)return;
   try{
     const j=await (await fetch(S.url)).json();
-    S.exp=j.exp.map(e=>({...e,amount:+e.amount,planned:!!e.planned}));
-    if(j.cfg&&j.cfg.rec){S.rec=j.cfg.rec;S.budget=j.cfg.budget||0;if(j.cfg.cb)S.cb=j.cfg.cb;if(j.cfg.cats&&j.cfg.cats.length)S.cats=j.cfg.cats;if(j.cfg.srcs&&j.cfg.srcs.length)S.srcs=j.cfg.srcs}
+    S.exp=j.exp.map(e=>({...e,amount:+e.amount,planned:!!e.planned}));S.loaded=true;
+    if(j.cfg&&j.cfg.rec){S.rec=j.cfg.rec;S.budget=j.cfg.budget||0;if(j.cfg.cb)S.cb=j.cfg.cb;if(j.cfg.users)S.users=j.cfg.users;if(j.cfg.cats&&j.cfg.cats.length)S.cats=j.cfg.cats;if(j.cfg.srcs&&j.cfg.srcs.length)S.srcs=j.cfg.srcs}
     save();
   }catch(e){}
 }
@@ -98,10 +101,10 @@ async function sync(quiet){await pull();autopost();await flush();if(!quiet||S.ta
 /* ---------- views ---------- */
 const chips=(list,sel,k)=>'<div class="chips">'+list.map(x=>`<button type="button" class="chip${x===sel?' on':''}" data-k="${k}" data-v="${esc(x)}">${esc(x)}</button>`).join('')+'</div>';
 function render(){
-  $('#who').textContent=S.user||'Set name';
+  $('#who').textContent=S.user||'Who are you?';
   const T=[['dash','Home'],['add','Add'],['month','Month'],['rec','Recurring'],['set','Settings']];
   $('#nav').innerHTML=T.map(t=>`<button class="${S.tab===t[0]?'on':''}" data-t="${t[0]}">${t[1]}</button>`).join('');
-  $('#ttl').textContent={dash:new Date().toLocaleString('en',{month:'long'}),add:'Add spend',month:new Date().toLocaleString('en',{month:'long'}),rec:'Monthly fixed',set:'Settings'}[S.tab];
+  $('#ttl').textContent={who:'Who is this?',dash:new Date().toLocaleString('en',{month:'long'}),add:'Add spend',month:new Date().toLocaleString('en',{month:'long'}),rec:'Monthly fixed',set:'Settings'}[S.tab];
   $('#v').innerHTML=views[S.tab]();
 }
 const COL=['#0e7c7b','#e09f1f','#c8412b','#3b6fb6','#7a5aa6','#6aa84f','#d4688f','#8a9bad'];
@@ -123,6 +126,8 @@ function bars(labels,series,style){
   return o+'</svg>'}
 const leg=a=>'<div class="chips" style="margin-top:4px;gap:12px">'+a.map(x=>`<span class="mute" style="display:flex;align-items:center;gap:5px"><i style="width:10px;height:10px;border-radius:2px;background:${x[0]}"></i>${esc(x[1])}</span>`).join('')+'</div>';
 const views={
+who(){return `<div class="card"><label style="margin-top:0">Tap your name</label><div class="chips">${members().map(u=>`<button class="chip${u===S.user?' on':''}" data-who="${esc(u)}">${esc(u)}</button>`).join('')||'<span class="mute">No one yet</span>'}</div>
+<label>Not listed? Add yourself</label><input id="wn" placeholder="Your name"><button class="go" id="wadd">Join</button></div>`},
 dash(){
   let L=S.exp.filter(e=>e.date.startsWith(mo())&&!e.planned);
   if(S.scope==='mine')L=L.filter(e=>e.user===S.user);
@@ -177,7 +182,7 @@ rec(){return `<div class="card">${S.rec.map(r=>`<div class="row"><div>${esc(r.na
 <label>Category</label><select id="rc">${S.cats.map(x=>`<option>${esc(x)}</option>`).join('')}</select>
 <button class="go" id="radd">Add</button></div>
 <p class="mute">Each item posts itself as an expense on its day every month, and counts in the forecast until then.</p>`},
-set(){return `<div class="card"><label>Your name</label><input id="sn" value="${esc(S.user)}">
+set(){return `<div class="card"><label>Family members (comma separated)</label><input id="sm" value="${esc(members().join(', '))}">
 <label>Monthly budget (AED)</label><input id="sb" inputmode="decimal" value="${S.budget||''}">
 <label>Budget per category (AED / month)</label>${S.cats.map(c=>`<div class="row"><span>${esc(c)}</span><input data-cb="${esc(c)}" inputmode="decimal" value="${S.cb[c]||''}" style="width:110px;text-align:right"></div>`).join('')}
 <label>Fund sources (comma separated)</label><input id="ss" value="${esc(S.srcs.join(', '))}">
@@ -185,6 +190,7 @@ set(){return `<div class="card"><label>Your name</label><input id="sn" value="${
 <label>Home chart groups spending by</label><select id="sd">${[['cat','Category'],['src','Fund source'],['user','Person']].map(o=>`<option value="${o[0]}"${S.dash===o[0]?' selected':''}>${o[1]}</option>`).join('')}</select>
 <label>Google Sheets web app URL</label><input id="su" value="${esc(S.url)}" placeholder="https://script.google.com/macros/s/.../exec">
 <button class="go" id="ssave">Save settings</button><button class="go" id="ssync" style="background:var(--card);color:var(--acc);border:1px solid var(--acc)">Sync now</button>
+<button class="go" id="sinv" style="background:var(--card);color:var(--acc);border:1px solid var(--acc)">Invite family (share link)</button>
 <p class="mute">${S.url?(S.q.length?S.q.length+' change(s) waiting to sync':'All synced'):'Not connected to a sheet yet. Data is stored on this phone only.'}</p></div>`}
 };
 
@@ -192,13 +198,22 @@ set(){return `<div class="card"><label>Your name</label><input id="sn" value="${
 document.addEventListener('click',async ev=>{
   const t=ev.target.closest('button,input');if(!t)return;
   if(t.dataset.t){S.tab=t.dataset.t;save();render();if(S.tab==='month'||S.tab==='dash')sync();return}
-  if(t.id==='who'){const n=prompt('Your name',S.user);if(n!==null){S.user=n.trim();save();render()}return}
+  if(t.id==='who'){S.tab='who';render();return}
+  if(t.dataset.who){choose(t.dataset.who);return}
+  if(t.id==='wadd'){const n=$('#wn').value.trim();if(n)choose(n);return}
+  if(t.id==='sinv'){
+    if(!S.url){toast('Add the sheet URL first');return}
+    const link=location.href.split('#')[0]+'#u='+encodeURIComponent(S.url);
+    if(navigator.share)navigator.share({title:'Family spend tracker',url:link}).catch(()=>{});
+    else if(navigator.clipboard)navigator.clipboard.writeText(link).then(()=>toast('Link copied'));
+    else prompt('Copy this link',link);
+    return}
   if(t.dataset.dk){S.dash=t.dataset.dk;save();render();return}
   if(t.dataset.dw){S.scope=t.dataset.dw;save();render();return}
   if(t.dataset.k){S[t.dataset.k]=t.dataset.v;save();const a=$('#amt').value,i=$('#item').value,p=$('#plan').checked,d=$('#date').value;render();$('#amt').value=a;$('#item').value=i;$('#plan').checked=p;$('#date').value=d;$('#date').style.display=p?'block':'none';return}
   if(t.id==='save'){
     const amount=parseFloat($('#amt').value);
-    if(!S.user){toast('Tap the name at top first');return}
+    if(!S.user){S.tab='who';render();return}
     if(!(amount>0)){toast('Enter an amount');return}
     if(!S.src||!S.cat){toast('Pick a fund source and category');return}
     const planned=$('#plan').checked,e={id:uid(),date:planned?$('#date').value:today(),user:S.user,item:$('#item').value.trim(),amount,src:S.src,cat:S.cat,planned};
@@ -212,9 +227,11 @@ document.addEventListener('click',async ev=>{
     S.rec.push({id:uid(),name,amount,day,src:$('#rs').value,cat:$('#rc').value});
     queue({a:'cfg',cfg:cfg()});autopost();render();toast('Added');return}
   if(t.id==='ssave'){
-    const cb={};document.querySelectorAll('[data-cb]').forEach(i=>{const v=parseFloat(i.value);if(v>0)cb[i.dataset.cb]=v});S.cb=cb;
+    const cb={};document.querySelectorAll('[data-cb]').forEach(i=>{const v=parseFloat(i.value);if(v>0)cb[i.dataset.cb]=v});
     const list=v=>v.split(',').map(x=>x.trim()).filter(Boolean);
-    S.user=$('#sn').value.trim();S.budget=parseFloat($('#sb').value)||0;S.srcs=list($('#ss').value);S.cats=list($('#sc').value);S.url=$('#su').value.trim();S.dash=$('#sd').value;
+    const f={users:list($('#sm').value),budget:parseFloat($('#sb').value)||0,srcs:list($('#ss').value),cats:list($('#sc').value),url:$('#su').value.trim(),dash:$('#sd').value};
+    if(f.url!==S.url){S.url=f.url;S.loaded=false;await pull()}
+    Object.assign(S,{users:f.users,budget:f.budget,srcs:f.srcs,cats:f.cats,dash:f.dash,cb});
     queue({a:'cfg',cfg:cfg()});render();toast('Saved');return}
   if(t.id==='ssync'){toast('Syncing…');await sync();toast('Done');return}
 });
@@ -222,7 +239,9 @@ document.addEventListener('change',ev=>{if(ev.target.id==='plan')$('#date').styl
 window.addEventListener('online',sync);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});
 setInterval(()=>{if(!document.hidden&&S.url)sync(true)},10000);
-S.tab='dash';render();sync();
+const hm=location.hash.match(/u=([^&]+)/);
+if(hm){const u=decodeURIComponent(hm[1]);if(u&&u!==S.url){S.url=u;S.loaded=false;save()}}
+S.tab=S.user?'dash':'who';render();sync();
 </script>
 </body>
 </html>
