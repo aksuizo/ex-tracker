@@ -39,6 +39,26 @@ nav button.on{color:var(--acc);font-weight:700}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:20px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.show{opacity:1}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+table.t{width:100%;border-collapse:collapse;font-size:14px}.t th{text-align:left;color:var(--mute);font-weight:600;font-size:12px;padding:6px 8px}.t td{padding:9px 8px;border-top:1px solid var(--line);vertical-align:top}.t .r{text-align:right}.t small{color:var(--mute)}
+.dh{display:flex;justify-content:space-between;font-size:13px;color:var(--mute);font-weight:600;padding:12px 0 4px;border-top:1px solid var(--line)}.dh:first-child{border-top:0;padding-top:0}
+.fg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.grid{display:grid;grid-template-columns:1fr;column-gap:14px}
+.vw,nav button .l{display:none}
+.v-add,.v-rec,.v-set,.v-who{max-width:560px}.v-month{max-width:640px}
+@media(min-width:700px){
+  main{max-width:780px;padding-top:20px}
+  .grid{grid-template-columns:1fr 1fr}.fg{grid-template-columns:repeat(4,1fr)}
+  .vm{display:none}.vw{display:block}
+  nav button .s{display:none}nav button .l{display:inline}
+}
+@media(min-width:1000px){
+  body{padding-left:210px}
+  main{max-width:1000px;padding:28px 32px 40px}
+  nav{top:0;right:auto;width:210px;flex-direction:column;border-top:0;border-right:1px solid var(--line);padding:24px 12px;gap:4px}
+  nav button{flex:none;text-align:left;padding:12px 14px;border-radius:10px;font-size:15px}
+  nav button.on{background:var(--bg)}
+  .toast{bottom:28px;left:calc(50% + 105px)}
+}
 </style>
 </head>
 <body>
@@ -68,23 +88,38 @@ const queue=op=>{if(op.a==='cfg'&&S.url&&!S.loaded){toast('Still loading shared 
 
 /* ---------- sync ---------- */
 let busy=false;
+const webpage='The link returned a web page, not data. In Apps Script set access to Anyone, then redeploy as a New version.';
+async function send(op){
+  const init={method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(op)};
+  try{
+    const r=await fetch(S.url,init),t=(await r.text()).trim();
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    if(t!=='ok')throw new Error(t.includes('<')?webpage:t.slice(0,150));
+    return;
+  }catch(e){if(!(e instanceof TypeError))throw e}
+  await fetch(S.url,{...init,mode:'no-cors'});
+  const j=JSON.parse(await (await fetch(S.url)).text());
+  if(op.a==='add'&&!j.exp.some(x=>x.id===op.e.id))throw new Error('The sheet did not receive the entry');
+}
 async function flush(){
   if(!S.url||busy||!navigator.onLine)return;busy=true;
-  try{while(S.q.length){
-    await fetch(S.url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},body:JSON.stringify(S.q[0])});
-    S.q.shift();save();
-  }}catch(e){}
-  busy=false;
+  try{while(S.q.length){await send(S.q[0]);S.q.shift();S.err='';save()}}
+  catch(e){S.err='Could not send to the sheet: '+(e.message||e)}
+  save();busy=false;
 }
 async function pull(){
   if(!S.url||!navigator.onLine)return;
   await flush();if(S.q.length)return;
   try{
-    const j=await (await fetch(S.url)).json();
-    S.exp=j.exp.map(e=>({...e,amount:+e.amount,planned:!!e.planned}));S.loaded=true;
+    const x=await (await fetch(S.url)).text();let j;
+    try{j=JSON.parse(x)}catch(e){throw new Error(x.includes('<')?webpage:'Unreadable reply')}
+    if(j.error)throw new Error(j.error);
+    const remote=j.exp.map(e=>({...e,amount:+e.amount,planned:!!e.planned}));
+    if(!S.loaded){const ids=new Set(remote.map(e=>e.id));S.exp.forEach(e=>{if(!ids.has(e.id)){remote.push(e);S.q.push({a:'add',e})}})}
+    S.exp=remote;S.loaded=true;S.err='';
     if(j.cfg&&j.cfg.rec){S.rec=j.cfg.rec;S.budget=j.cfg.budget||0;if(j.cfg.cb)S.cb=j.cfg.cb;if(j.cfg.users)S.users=j.cfg.users;if(j.cfg.cats&&j.cfg.cats.length)S.cats=j.cfg.cats;if(j.cfg.srcs&&j.cfg.srcs.length)S.srcs=j.cfg.srcs}
     save();
-  }catch(e){}
+  }catch(e){S.err='Could not read the sheet: '+(e.message||e);save()}
 }
 function autopost(){
   const d=today(),m=d.slice(0,7),day=+d.slice(8);
@@ -96,16 +131,16 @@ function autopost(){
     }
   });save();
 }
-async function sync(quiet){await pull();autopost();await flush();if(!quiet||S.tab==='month'||S.tab==='dash')render()}
+async function sync(quiet){await pull();autopost();await flush();if(!quiet||S.tab==='month'||S.tab==='dash'||(S.tab==='tx'&&!['INPUT','SELECT'].includes((document.activeElement||{}).tagName)))render()}
 
 /* ---------- views ---------- */
 const chips=(list,sel,k)=>'<div class="chips">'+list.map(x=>`<button type="button" class="chip${x===sel?' on':''}" data-k="${k}" data-v="${esc(x)}">${esc(x)}</button>`).join('')+'</div>';
 function render(){
   $('#who').textContent=S.user||'Who are you?';
-  const T=[['dash','Home'],['add','Add'],['month','Month'],['rec','Recurring'],['set','Settings']];
-  $('#nav').innerHTML=T.map(t=>`<button class="${S.tab===t[0]?'on':''}" data-t="${t[0]}">${t[1]}</button>`).join('');
-  $('#ttl').textContent={who:'Who is this?',dash:new Date().toLocaleString('en',{month:'long'}),add:'Add spend',month:new Date().toLocaleString('en',{month:'long'}),rec:'Monthly fixed',set:'Settings'}[S.tab];
-  $('#v').innerHTML=views[S.tab]();
+  const T=[['dash','Home','Home'],['add','Add','Add'],['month','Month','Month'],['tx','Txns','Transactions'],['rec','Fixed','Recurring'],['set','Settings','Settings']];
+  $('#nav').innerHTML=T.map(t=>`<button class="${S.tab===t[0]?'on':''}" data-t="${t[0]}"><span class="s">${t[1]}</span><span class="l">${t[2]}</span></button>`).join('');
+  $('#ttl').textContent={tx:'Transactions',who:'Who is this?',dash:new Date().toLocaleString('en',{month:'long'}),add:'Add spend',month:new Date().toLocaleString('en',{month:'long'}),rec:'Monthly fixed',set:'Settings'}[S.tab];
+  $('#v').className='v-'+S.tab;$('#v').innerHTML=views[S.tab]();
 }
 const COL=['#0e7c7b','#e09f1f','#c8412b','#3b6fb6','#7a5aa6','#6aa84f','#d4688f','#8a9bad'];
 function donut(items,tot){let off=25;
@@ -125,7 +160,31 @@ function bars(labels,series,style){
     o+=`<text x="${cx}" y="${y}" text-anchor="end" font-size="9" transform="rotate(-40 ${cx} ${y})" style="fill:var(--mute)">${esc(lb.length>11?lb.slice(0,10)+'…':lb)}</text>`});
   return o+'</svg>'}
 const leg=a=>'<div class="chips" style="margin-top:4px;gap:12px">'+a.map(x=>`<span class="mute" style="display:flex;align-items:center;gap:5px"><i style="width:10px;height:10px;border-radius:2px;background:${x[0]}"></i>${esc(x[1])}</span>`).join('')+'</div>';
+const F={q:'',m:'all',u:'all',c:'all',s:'all'};
+function txList(){
+  const q=F.q.toLowerCase();
+  const L=S.exp.filter(e=>(F.m==='all'||e.date.startsWith(F.m))&&(F.u==='all'||e.user===F.u)&&(F.c==='all'||e.cat===F.c)&&(F.s==='all'||e.src===F.s)&&(!q||(e.item+' '+e.cat+' '+e.src+' '+e.user).toLowerCase().includes(q))).sort((a,b)=>b.date.localeCompare(a.date)||String(b.id).localeCompare(String(a.id)));
+  if(!L.length)return '<div class="card mute">No transactions match.</div>';
+  const tot=sum(L.filter(e=>!e.planned)),sh=L.slice(0,300),yr=today().slice(0,4);
+  const act=e=>(e.planned?`<button class="sm" data-paid="${e.id}">Mark paid</button>`:'')+`<button class="sm" data-del="${e.id}">Delete</button>`;
+  const tag=e=>e.planned?'<span class="tag">upcoming</span>':'';
+  const dl=d=>new Date(d+'T00:00:00').toLocaleDateString('en',{weekday:'short',day:'numeric',month:'short',year:d.slice(0,4)===yr?undefined:'numeric'});
+  let h='',last='';
+  sh.forEach(e=>{
+    if(e.date!==last){last=e.date;h+=`<div class="dh"><span>${dl(e.date)}</span><span>${aed(sum(sh.filter(x=>x.date===e.date&&!x.planned)))}</span></div>`}
+    h+=`<div class="row"><div>${esc(e.item||e.cat)}${tag(e)}<small>${esc(e.user)} · ${esc(e.src)} · ${esc(e.cat)}</small></div><div class="r">${aed(e.amount)}<br>${act(e)}</div></div>`});
+  const t=sh.map(e=>`<tr><td>${e.date}</td><td>${esc(e.item||'-')}${tag(e)}</td><td>${esc(e.user)}</td><td>${esc(e.src)}</td><td>${esc(e.cat)}</td><td class="r">${aed(e.amount)}</td><td>${act(e)}</td></tr>`).join('');
+  return `<div class="mute" style="margin:4px 0 8px">${L.length} transaction${L.length>1?'s':''} · ${aed(tot)} spent${L.length>300?' · showing latest 300':''}</div>
+<div class="card vm">${h}</div>
+<div class="card vw"><table class="t"><thead><tr><th>Date</th><th>Item</th><th>Person</th><th>Fund source</th><th>Category</th><th class="r">Amount</th><th></th></tr></thead><tbody>${t}</tbody></table></div>`}
 const views={
+tx(){
+  const ms=[...new Set(S.exp.map(e=>e.date.slice(0,7)))].sort().reverse();
+  const ml=m=>new Date(m+'-01T00:00:00').toLocaleString('en',{month:'short',year:'numeric'});
+  const sel=(id,cur,o)=>`<select id="${id}">${o.map(x=>`<option value="${esc(x[0])}"${x[0]===cur?' selected':''}>${esc(x[1])}</option>`).join('')}</select>`;
+  return `<input id="fq" placeholder="Search item, category, person…" value="${esc(F.q)}" style="margin-bottom:8px">
+<div class="fg">${sel('fm',F.m,[['all','All time'],...ms.map(m=>[m,ml(m)])])}${sel('fu',F.u,[['all','Everyone'],...members().map(u=>[u,u]),['Recurring','Recurring']])}${sel('fc',F.c,[['all','All categories'],...S.cats.map(c=>[c,c])])}${sel('fs',F.s,[['all','All sources'],...S.srcs.map(c=>[c,c])])}</div>
+<div id="txl">${txList()}</div>`},
 who(){return `<div class="card"><label style="margin-top:0">Tap your name</label><div class="chips">${members().map(u=>`<button class="chip${u===S.user?' on':''}" data-who="${esc(u)}">${esc(u)}</button>`).join('')||'<span class="mute">No one yet</span>'}</div>
 <label>Not listed? Add yourself</label><input id="wn" placeholder="Your name"><button class="go" id="wadd">Join</button></div>`},
 dash(){
@@ -147,11 +206,11 @@ dash(){
   const pill=(k,v,t,cur)=>`<button class="chip${cur===v?' on':''}" data-${k}="${v}">${t}</button>`;
   return `<div class="chips" style="margin-bottom:8px">${pill('dk','cat','Category',S.dash)}${pill('dk','src','Fund source',S.dash)}${pill('dk','user','Person',S.dash)}</div>
 <div class="chips" style="margin-bottom:12px">${pill('dw','all','Everyone',S.scope)}${pill('dw','mine','Mine',S.scope)}</div>
-<div class="card" style="text-align:center">${tot?donut(items,tot):'<div class="mute" style="padding:30px 0">No spending yet this month</div>'}
-<div style="text-align:left">${items.map((x,i)=>`<div class="row"><span><i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${COL[i%COL.length]};margin-right:8px"></i>${esc(x[0])}</span><span class="r">${aed(x[1])} <small style="display:inline;font-weight:400">${Math.round(x[1]/tot*100)}%</small></span></div>`).join('')}</div></div>
-<h2>Budget vs actual by category</h2><div class="card">${c1}${leg([['var(--mute)','Budget'],['var(--acc)','Spent'],['var(--bad)','Over budget']])}${brow?'<div style="margin-top:8px">'+brow+'</div>':'<div class="mute" style="margin-top:8px">Set category budgets in Settings.</div>'}</div>
-<h2>Spending by person, last 6 months</h2><div class="card">${c2}</div>
-<h2>Fund sources used this month</h2><div class="card">${c3}</div>`},
+<div class="grid"><div class="sec"><h2>Distribution</h2><div class="card" style="text-align:center">${tot?donut(items,tot):'<div class="mute" style="padding:30px 0">No spending yet this month</div>'}
+<div style="text-align:left">${items.map((x,i)=>`<div class="row"><span><i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${COL[i%COL.length]};margin-right:8px"></i>${esc(x[0])}</span><span class="r">${aed(x[1])} <small style="display:inline;font-weight:400">${Math.round(x[1]/tot*100)}%</small></span></div>`).join('')}</div></div></div>
+<div class="sec"><h2>Budget vs actual by category</h2><div class="card">${c1}${leg([['var(--mute)','Budget'],['var(--acc)','Spent'],['var(--bad)','Over budget']])}${brow?'<div style="margin-top:8px">'+brow+'</div>':'<div class="mute" style="margin-top:8px">Set category budgets in Settings.</div>'}</div></div>
+<div class="sec"><h2>Spending by person, last 6 months</h2><div class="card">${c2}</div></div>
+<div class="sec"><h2>Fund sources used this month</h2><div class="card">${c3}</div></div></div>`},
 add(){return `<div class="card"><span class="cur">AED</span><input class="amt" id="amt" inputmode="decimal" placeholder="0" autocomplete="off">
 <label>What for</label><input id="item" placeholder="e.g. Carrefour">
 <label>Paid from</label>${chips(S.srcs,S.src,'src')}
@@ -190,14 +249,16 @@ set(){return `<div class="card"><label>Family members (comma separated)</label><
 <label>Home chart groups spending by</label><select id="sd">${[['cat','Category'],['src','Fund source'],['user','Person']].map(o=>`<option value="${o[0]}"${S.dash===o[0]?' selected':''}>${o[1]}</option>`).join('')}</select>
 <label>Google Sheets web app URL</label><input id="su" value="${esc(S.url)}" placeholder="https://script.google.com/macros/s/.../exec">
 <button class="go" id="ssave">Save settings</button><button class="go" id="ssync" style="background:var(--card);color:var(--acc);border:1px solid var(--acc)">Sync now</button>
+<button class="go" id="stest" style="background:var(--card);color:var(--acc);border:1px solid var(--acc)">Test sheet connection</button>
+<button class="go" id="sall" style="background:var(--card);color:var(--acc);border:1px solid var(--acc)">Resend all entries to sheet</button>
 <button class="go" id="sinv" style="background:var(--card);color:var(--acc);border:1px solid var(--acc)">Invite family (share link)</button>
-<p class="mute">${S.url?(S.q.length?S.q.length+' change(s) waiting to sync':'All synced'):'Not connected to a sheet yet. Data is stored on this phone only.'}</p></div>`}
+<p class="mute">${S.err?`<span style="color:var(--bad)">${esc(S.err)}</span>`:S.url?(S.q.length?S.q.length+' change(s) waiting to sync':'All synced'):'Not connected to a sheet yet. Data is stored on this phone only.'}</p></div>`}
 };
 
 /* ---------- events ---------- */
 document.addEventListener('click',async ev=>{
   const t=ev.target.closest('button,input');if(!t)return;
-  if(t.dataset.t){S.tab=t.dataset.t;save();render();if(S.tab==='month'||S.tab==='dash')sync();return}
+  if(t.dataset.t){S.tab=t.dataset.t;save();render();if(['month','dash','tx'].includes(S.tab))sync();return}
   if(t.id==='who'){S.tab='who';render();return}
   if(t.dataset.who){choose(t.dataset.who);return}
   if(t.id==='wadd'){const n=$('#wn').value.trim();if(n)choose(n);return}
@@ -233,9 +294,20 @@ document.addEventListener('click',async ev=>{
     if(f.url!==S.url){S.url=f.url;S.loaded=false;await pull()}
     Object.assign(S,{users:f.users,budget:f.budget,srcs:f.srcs,cats:f.cats,dash:f.dash,cb});
     queue({a:'cfg',cfg:cfg()});render();toast('Saved');return}
-  if(t.id==='ssync'){toast('Syncing…');await sync();toast('Done');return}
+  if(t.id==='ssync'){toast('Syncing…');await sync();toast(S.err?'Sync failed, see message':'Synced');return}
+  if(t.id==='stest'){
+    if(!S.url){alert('Paste the sheet URL first');return}
+    try{const x=await (await fetch(S.url)).text();let j;try{j=JSON.parse(x)}catch(e){throw new Error(x.includes('<')?webpage:'Unreadable reply')}
+      if(j.error)throw new Error(j.error);S.err='';alert('Connected. The sheet has '+j.exp.length+' entries. This phone has '+S.exp.length+', with '+S.q.length+' waiting to send.')}
+    catch(e){S.err='Test failed: '+(e.message||e);alert(S.err)}
+    save();render();return}
+  if(t.id==='sall'){
+    if(!S.url){alert('Paste the sheet URL first');return}
+    S.q=S.exp.map(e=>({a:'add',e}));S.q.push({a:'cfg',cfg:cfg()});save();toast('Sending…');await flush();render();toast(S.err?'Failed, see message':'All entries sent');return}
 });
 document.addEventListener('change',ev=>{if(ev.target.id==='plan')$('#date').style.display=ev.target.checked?'block':'none'});
+document.addEventListener('input',e=>{if(e.target.id==='fq'){F.q=e.target.value;$('#txl').innerHTML=txList()}});
+document.addEventListener('change',e=>{const k={fm:'m',fu:'u',fc:'c',fs:'s'}[e.target.id];if(k){F[k]=e.target.value;$('#txl').innerHTML=txList()}});
 window.addEventListener('online',sync);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});
 setInterval(()=>{if(!document.hidden&&S.url)sync(true)},10000);
