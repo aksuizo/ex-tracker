@@ -121,6 +121,14 @@ async function flush(){
   catch(e){S.err='Could not send to the sheet: '+(e.message||e)}
   save();busy=false;
 }
+const canon=(v,list,d)=>{v=String(v==null?'':v).trim();if(!v)return d;return list.find(x=>x.toLowerCase()===v.toLowerCase())||v};
+const fix=e=>{
+  let a=e.amount;if(typeof a!=='number')a=parseFloat(String(a).replace(/[^0-9.\-]/g,''));
+  let d=String(e.date||'').trim(),m;
+  if(m=d.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))d=m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
+  else if(m=d.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/))d=m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+  return {...e,amount:isNaN(a)?0:a,date:d,cat:canon(e.cat,S.cats,'Uncategorized'),src:canon(e.src,S.srcs,'Unassigned'),user:canon(e.user,S.users.concat('Recurring'),'Unknown')};
+};
 async function pull(){
   if(!S.url||!navigator.onLine)return;
   await flush();if(S.q.length)return;
@@ -132,7 +140,7 @@ async function pull(){
     if(!S.loaded){const ids=new Set(remote.map(e=>e.id));S.exp.forEach(e=>{if(!ids.has(e.id)){remote.push(e);S.q.push({a:'add',e})}})}
     S.exp=remote;S.loaded=true;S.err='';
     if(j.cfg&&j.cfg.rec){S.rec=j.cfg.rec;S.budget=j.cfg.budget||0;if(j.cfg.cb)S.cb=j.cfg.cb;if(j.cfg.cash!=null)S.cash=+j.cfg.cash||0;if(j.cfg.users)S.users=j.cfg.users;if(j.cfg.cats&&j.cfg.cats.length)S.cats=j.cfg.cats;if(j.cfg.srcs&&j.cfg.srcs.length)S.srcs=j.cfg.srcs}
-    save();
+    S.exp=S.exp.map(fix);save();
   }catch(e){S.err='Could not read the sheet: '+(e.message||e);save()}
 }
 function autopost(){
