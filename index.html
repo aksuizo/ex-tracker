@@ -127,6 +127,8 @@ const fix=e=>{
   let d=String(e.date||'').trim(),m;
   if(m=d.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))d=m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
   else if(m=d.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/))d=m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+  const MO={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d)&&(m=d.match(/^(?:[A-Za-z]{3},? )?([A-Za-z]{3}) (\d{1,2}),? (\d{4})/))&&MO[m[1].toLowerCase()])d=m[3]+'-'+String(MO[m[1].toLowerCase()]).padStart(2,'0')+'-'+m[2].padStart(2,'0');
   return {...e,amount:isNaN(a)?0:a,date:d,cat:canon(e.cat,S.cats,'Uncategorized'),src:canon(e.src,S.srcs,'Unassigned'),user:canon(e.user,S.users.concat('Recurring'),'Unknown')};
 };
 async function pull(){
@@ -348,6 +350,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});
 setInterval(()=>{if(!document.hidden&&S.url)sync(true)},10000);
 const hm=location.hash.match(/u=([^&]+)/);
 if(hm){const u=decodeURIComponent(hm[1]);if(u&&u!==S.url){S.url=u;S.loaded=false;save()}}
+S.exp=S.exp.map(fix);save();
 S.tab=S.user?'dash':'who';render();sync();
 </script>
 </body>
