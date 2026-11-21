@@ -80,6 +80,8 @@ input[type=date],input[type=month]{min-height:44px;-webkit-appearance:none;appea
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center;z-index:50}
 .sheet{background:var(--card);width:100%;max-width:480px;border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));max-height:92vh;overflow:auto}
 @media(min-width:700px){.modal{align-items:center}.sheet{border-radius:18px}}
+.tg{font-size:10px;font-weight:700;letter-spacing:.4px;border-radius:6px;padding:1px 6px;margin-right:6px;border:1px solid var(--line);color:var(--mute);vertical-align:1px}
+.tg.in{color:var(--ok);border-color:var(--ok)}.tg.pay{color:var(--warn);border-color:var(--warn)}.cp{color:var(--warn)}
 </style>
 </head>
 <body>
@@ -102,6 +104,10 @@ const toast=t=>{const e=$('#toast');e.textContent=t;e.classList.add('show');setT
 const sum=a=>a.reduce((x,e)=>x+e.amount,0);
 const isOut=e=>e.type!=='in'&&e.type!=='pay';
 const kind=e=>e.type==='in'?'in':e.type==='pay'?'pay':'out';
+const VER='2026.11.21-c';
+const amt=e=>`<span class="${e.type==='in'?'pos':e.type==='pay'?'cp':''}">${e.type==='in'?'+':e.type==='pay'?'':'−'}${aed(e.amount)}</span>`;
+const tp=e=>`<span class="tg ${kind(e)}">${{in:'IN',out:'OUT',pay:'CARD PAY'}[kind(e)]}</span>`;
+const sg=n=>(n>0?'+':n<0?'−':'')+aed(Math.abs(n));
 const catsFor=t=>t==='in'?S.inc:t==='pay'?S.cards:S.cats;
 const cfg=()=>({rec:S.rec,budget:S.budget,cats:S.cats,srcs:S.srcs,cb:S.cb,inc:S.inc,cards:S.cards,cc:S.cc,users:S.users});
 const mo=()=>today().slice(0,7);
@@ -218,9 +224,9 @@ function txList(){
   const dl=d=>new Date(d+'T00:00:00').toLocaleDateString('en',{weekday:'short',day:'numeric',month:'short',year:d.slice(0,4)===yr?undefined:'numeric'});
   let h='',last='';
   sh.forEach(e=>{
-    if(e.date!==last){last=e.date;h+=`<div class="dh"><span>${dl(e.date)}</span><span>${aed(sh.filter(x=>x.date===e.date&&!x.planned).reduce((a,x)=>a+net(x),0))}</span></div>`}
-    h+=`<div class="row"><div>${esc(e.item||e.cat)}${tag(e)}<small>${esc(e.user)} · ${esc(e.src)} · ${esc(e.cat)}</small></div><div class="r ${e.type==='in'?'pos':''}">${e.type==='in'?'+':''}${aed(e.amount)}<br>${act(e)}</div></div>`});
-  const t=sh.map(e=>`<tr><td>${e.date}</td><td>${esc(e.item||'-')}${tag(e)}</td><td>${e.type==='in'?'<span class="pos">In</span>':e.type==='pay'?'Card pay':'Out'}</td><td>${esc(e.user)}</td><td>${esc(e.src)}</td><td>${esc(e.cat)}</td><td class="r ${e.type==='in'?'pos':''}">${e.type==='in'?'+':''}${aed(e.amount)}</td><td>${act(e)}</td></tr>`).join('');
+    if(e.date!==last){last=e.date;h+=`<div class="dh"><span>${dl(e.date)}</span><span>${sg(sh.filter(x=>x.date===e.date&&!x.planned).reduce((a,x)=>a+net(x),0))}</span></div>`}
+    h+=`<div class="row"><div>${tp(e)}${esc(e.item||e.cat)}${tag(e)}<small>${esc(e.user)} · ${esc(e.src)} · ${esc(e.cat)}</small></div><div class="r">${amt(e)}<br>${act(e)}</div></div>`});
+  const t=sh.map(e=>`<tr><td>${e.date}</td><td>${esc(e.item||'-')}${tag(e)}</td><td>${e.type==='in'?'<span class="pos">In</span>':e.type==='pay'?'Card pay':'Out'}</td><td>${esc(e.user)}</td><td>${esc(e.src)}</td><td>${esc(e.cat)}</td><td class="r">${amt(e)}</td><td>${act(e)}</td></tr>`).join('');
   return `<div class="mute" style="margin:4px 0 8px">${L.length} transaction${L.length>1?'s':''} · In ${aed(tIn)} · Out ${aed(tOut)}${tPay?' · Card payments '+aed(tPay):''}${L.length>300?' · showing latest 300':''}</div>
 <div class="card vm">${h}</div>
 <div class="card vw"><table class="t"><thead><tr><th>Date</th><th>Item</th><th>Type</th><th>Person</th><th>Fund source</th><th>Category</th><th class="r">Amount</th><th></th></tr></thead><tbody>${t}</tbody></table></div>`}
@@ -310,7 +316,7 @@ month(){
 <div class="row"><span class="mute">Upcoming this month</span><span class="r">${aed(upcoming)}</span></div>
 <div class="row"><span>Forecast</span><span class="r" style="color:${B&&fc>B?'var(--bad)':'inherit'}">${aed(fc)}</span></div></div>
 <h2>By person</h2><div class="card">${by('user')}</div><h2>By category</h2><div class="card">${by('cat')}</div><h2>By fund source</h2><div class="card">${by('src')}</div>
-<h2>Entries</h2><div class="card">${all.map(e=>`<div class="row"><div>${esc(e.item||e.cat)}${e.planned?'<span class="tag">upcoming</span>':''}<small>${e.date.slice(5)} · ${esc(e.user)} · ${esc(e.src)} · ${esc(e.cat)}</small></div><div class="r">${aed(e.amount)}<br>${e.planned?`<button class="sm" data-paid="${e.id}">Mark paid</button>`:''}<button class="sm" data-del="${e.id}">Delete</button></div></div>`).join('')||'<div class="mute">No entries yet. Tap Add.</div>'}</div>`},
+<h2>Entries</h2><div class="card">${all.map(e=>`<div class="row"><div>${esc(e.item||e.cat)}${e.planned?'<span class="tag">upcoming</span>':''}<small>${e.date.slice(5)} · ${esc(e.user)} · ${esc(e.src)} · ${esc(e.cat)}</small></div><div class="r">${amt(e)}<br>${e.planned?`<button class="sm" data-paid="${e.id}">Mark paid</button>`:''}<button class="sm" data-del="${e.id}">Delete</button></div></div>`).join('')||'<div class="mute">No entries yet. Tap Add.</div>'}</div>`},
 rec(){return `<div class="card">${S.rec.map(r=>`<div class="row"><div>${esc(r.name)}<small>Day ${r.day} · ${esc(r.src)} · ${esc(r.cat)}</small></div><div class="r">${aed(r.amount)}<br><button class="sm" data-rdel="${r.id}">Remove</button></div></div>`).join('')||'<div class="mute">None yet. Add rent, school fee, tithes, subscriptions.</div>'}
 <div class="row"><b>Total per month</b><span class="r">${aed(sum(S.rec))}</span></div></div>
 <h2>Add fixed item</h2><div class="card"><input id="rn" placeholder="Name (e.g. Rent)">
@@ -333,6 +339,7 @@ ${S.cards.length?`<label>Card statement day and payment due day (1 to 31)</label
 <button class="go" id="stest" style="background:var(--card);color:var(--acc);border:1px solid var(--acc)">Test sheet connection</button>
 <button class="go" id="sall" style="background:var(--card);color:var(--acc);border:1px solid var(--acc)">Resend all entries to sheet</button>
 <button class="go" id="sinv" style="background:var(--card);color:var(--acc);border:1px solid var(--acc)">Invite family (share link)</button>
+<p class="mute" style="font-size:12px">App version ${VER}</p>
 <p class="mute">${S.err?`<span style="color:var(--bad)">${esc(S.err)}</span>`:S.url?(S.q.length?S.q.length+' change(s) waiting to sync':'All synced'):'Not connected to a sheet yet. Data is stored on this phone only.'}</p></div>`}
 };
 
