@@ -70,9 +70,10 @@ input[type=date],input[type=month]{min-height:44px;-webkit-appearance:none;appea
 .kpi{background:var(--card);border:1px solid var(--line);border-top:3px solid var(--acc);border-radius:14px;padding:12px 14px}
 .kpi small{display:block;color:var(--mute);font-size:12px}.kpi b{display:block;font-size:20px;font-variant-numeric:tabular-nums;margin-top:2px}.kpi i{font-style:normal;font-size:12px;color:var(--mute)}
 .neg{color:var(--bad)}
-@media(min-width:700px){.kpis{grid-template-columns:repeat(4,1fr)}}
-.seg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
-.seg button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:12px;padding:12px;font:inherit;font-weight:700}
+@media(min-width:700px){.kpis{grid-template-columns:repeat(3,1fr)}}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.seg button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:12px;padding:12px 4px;font:inherit;font-weight:700;font-size:14px}
+.seg .pay.on{background:var(--warn);border-color:var(--warn);color:#10243a}
 .seg .out.on{background:var(--bad);border-color:var(--bad);color:#fff}
 .seg .in.on{background:var(--ok);border-color:var(--ok);color:var(--accink)}
 .pos{color:var(--ok)}
@@ -90,7 +91,7 @@ input[type=date],input[type=month]{min-height:44px;-webkit-appearance:none;appea
 <div class="toast" id="toast"></div>
 <script>
 const $=s=>document.querySelector(s);
-const DEF={user:'',url:'',budget:0,cats:['Groceries','Food Delivery','Fuel','DEWA','Telecom','Internet','Other'],srcs:['Aaron Salary','Faith Salary','Aaron CC','Faith CC','Others'],exp:[],rec:[],q:[],tab:'add',src:'',cat:'',dash:'cat',scope:'all',cb:{},inc:['Salary','Bonus','Refund','Other'],addType:'out',cati:'',users:[],loaded:false};
+const DEF={user:'',url:'',budget:0,cats:['Groceries','Food Delivery','Fuel','DEWA','Telecom','Internet','Other'],srcs:['Aaron Salary','Faith Salary','Aaron CC','Faith CC','Others'],exp:[],rec:[],q:[],tab:'add',src:'',cat:'',dash:'cat',scope:'all',cb:{},inc:['Salary','Bonus','Refund','Other'],addType:'out',cati:'',catp:'',cards:['Aaron CC','Faith CC'],cc:{},users:[],loaded:false};
 let S=Object.assign({},DEF,JSON.parse(localStorage.getItem('spend')||'{}'));
 const save=()=>localStorage.setItem('spend',JSON.stringify(S));
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
@@ -99,8 +100,10 @@ const today=()=>new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOStr
 const aed=n=>'AED '+Math.round(n*100/100).toLocaleString('en-US',{maximumFractionDigits:2});
 const toast=t=>{const e=$('#toast');e.textContent=t;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),1800)};
 const sum=a=>a.reduce((x,e)=>x+e.amount,0);
-const isOut=e=>e.type!=='in';
-const cfg=()=>({rec:S.rec,budget:S.budget,cats:S.cats,srcs:S.srcs,cb:S.cb,inc:S.inc,users:S.users});
+const isOut=e=>e.type!=='in'&&e.type!=='pay';
+const kind=e=>e.type==='in'?'in':e.type==='pay'?'pay':'out';
+const catsFor=t=>t==='in'?S.inc:t==='pay'?S.cards:S.cats;
+const cfg=()=>({rec:S.rec,budget:S.budget,cats:S.cats,srcs:S.srcs,cb:S.cb,inc:S.inc,cards:S.cards,cc:S.cc,users:S.users});
 const mo=()=>today().slice(0,7);
 let DM=null;const dm=()=>DM||mo();
 const shift=(m,n)=>{const d=new Date(+m.slice(0,4),+m.slice(5)-1+n,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')};
@@ -136,10 +139,10 @@ const fix=e=>{
   let d=String(e.date||'').trim(),m;
   if(m=d.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))d=m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
   else if(m=d.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/))d=m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
-  const tl=String(e.type||'').toLowerCase().replace(/[^a-z]/g,''),ty=(tl==='in'||tl==='moneyin')?'in':'out';
+  const tl=String(e.type||'').toLowerCase().replace(/[^a-z]/g,''),ty=(tl==='in'||tl==='moneyin')?'in':(tl==='pay'||tl==='cardpayment')?'pay':'out';
   const MO={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
   if(!/^\d{4}-\d{2}-\d{2}$/.test(d)&&(m=d.match(/^(?:[A-Za-z]{3},? )?([A-Za-z]{3}) (\d{1,2}),? (\d{4})/))&&MO[m[1].toLowerCase()])d=m[3]+'-'+String(MO[m[1].toLowerCase()]).padStart(2,'0')+'-'+m[2].padStart(2,'0');
-  return {...e,amount:isNaN(a)?0:a,date:d,type:ty,cat:canon(e.cat,ty==='in'?S.inc:S.cats,'Uncategorized'),src:canon(e.src,S.srcs,'Unassigned'),user:canon(e.user,S.users.concat('Recurring'),'Unknown')};
+  return {...e,amount:isNaN(a)?0:a,date:d,type:ty,cat:canon(e.cat,catsFor(ty),'Uncategorized'),src:canon(e.src,S.srcs,'Unassigned'),user:canon(e.user,S.users.concat('Recurring'),'Unknown')};
 };
 async function pull(){
   if(!S.url||!navigator.onLine)return;
@@ -152,7 +155,7 @@ async function pull(){
     const loc=new Map(S.exp.map(e=>[e.id,e]));remote.forEach(r=>{if(r.type===undefined&&loc.get(r.id))r.type=loc.get(r.id).type});
     if(!S.loaded){const ids=new Set(remote.map(e=>e.id));S.exp.forEach(e=>{if(!ids.has(e.id)){remote.push(e);S.q.push({a:'add',e})}})}
     S.exp=remote;S.loaded=true;S.err='';
-    if(j.cfg&&j.cfg.rec){S.rec=j.cfg.rec;S.budget=j.cfg.budget||0;if(j.cfg.cb)S.cb=j.cfg.cb;if(j.cfg.inc&&j.cfg.inc.length)S.inc=j.cfg.inc;if(j.cfg.users)S.users=j.cfg.users;if(j.cfg.cats&&j.cfg.cats.length)S.cats=j.cfg.cats;if(j.cfg.srcs&&j.cfg.srcs.length)S.srcs=j.cfg.srcs}
+    if(j.cfg&&j.cfg.rec){S.rec=j.cfg.rec;S.budget=j.cfg.budget||0;if(j.cfg.cb)S.cb=j.cfg.cb;if(j.cfg.inc&&j.cfg.inc.length)S.inc=j.cfg.inc;if(Array.isArray(j.cfg.cards))S.cards=j.cfg.cards;if(j.cfg.cc)S.cc=j.cfg.cc;if(j.cfg.users)S.users=j.cfg.users;if(j.cfg.cats&&j.cfg.cats.length)S.cats=j.cfg.cats;if(j.cfg.srcs&&j.cfg.srcs.length)S.srcs=j.cfg.srcs}
     S.exp=S.exp.map(fix);save();
   }catch(e){S.err='Could not read the sheet: '+(e.message||e);save()}
 }
@@ -182,6 +185,15 @@ function donut(items,tot){let off=25;
   return '<svg viewBox="0 0 42 42" width="190" height="190" style="color:var(--ink)"><circle cx="21" cy="21" r="15.9155" fill="none" style="stroke:var(--line)" stroke-width="6"/>'
   +items.map((x,i)=>{const p=x[1]/tot*100,c=`<circle cx="21" cy="21" r="15.9155" fill="none" stroke="${COL[i%COL.length]}" stroke-width="6" stroke-dasharray="${p} ${100-p}" stroke-dashoffset="${off}"/>`;off-=p;return c}).join('')
   +`<text x="21" y="21.8" text-anchor="middle" font-size="4" font-weight="700" fill="currentColor">${Math.round(tot).toLocaleString('en-US')}</text><text x="21" y="26" text-anchor="middle" font-size="2.4" style="fill:var(--mute)">AED spent</text></svg>`}
+const mkDate=(y,m,d)=>{const t=new Date(y,m,1),yy=t.getFullYear(),mm=t.getMonth(),dd=Math.min(d,new Date(yy,mm+1,0).getDate());return yy+'-'+String(mm+1).padStart(2,'0')+'-'+String(dd).padStart(2,'0')};
+const fmtD=d=>new Date(d+'T00:00:00').toLocaleDateString('en',{day:'numeric',month:'short'});
+function cycle(cfg,ref){
+  const y=+ref.slice(0,4),m=+ref.slice(5,7)-1;
+  let st=mkDate(y,m,cfg.s);if(st>ref)st=mkDate(y,m-1,cfg.s);
+  const sy=+st.slice(0,4),sm=+st.slice(5,7)-1;
+  let due=mkDate(sy,sm,cfg.d);if(due<=st)due=mkDate(sy,sm+1,cfg.d);
+  return {st,due,next:mkDate(sy,sm+1,cfg.s),days:Math.round((new Date(due+'T00:00:00')-new Date(ref+'T00:00:00'))/864e5)};
+}
 const nice=m=>{const u=Math.pow(10,Math.floor(Math.log10(m)))/2;return Math.ceil(m/u)*u};
 const tk=v=>v>=1000?+(v/1000).toFixed(1)+'k':Math.round(v);
 function bars(labels,series,style){
@@ -198,9 +210,9 @@ const leg=a=>'<div class="chips" style="margin-top:4px;gap:12px">'+a.map(x=>`<sp
 const F={q:'',f:'',t:'',k:'all',u:'all',c:'all',s:'all'};
 function txList(){
   const q=F.q.toLowerCase();
-  const L=S.exp.filter(e=>(!F.f||e.date>=F.f)&&(!F.t||e.date<=F.t)&&(F.u==='all'||e.user===F.u)&&(F.c==='all'||e.cat===F.c)&&(F.s==='all'||e.src===F.s)&&(F.k==='all'||(e.type==='in'?'in':'out')===F.k)&&(!q||(e.item+' '+e.cat+' '+e.src+' '+e.user).toLowerCase().includes(q))).sort((a,b)=>b.date.localeCompare(a.date)||String(b.id).localeCompare(String(a.id)));
+  const L=S.exp.filter(e=>(!F.f||e.date>=F.f)&&(!F.t||e.date<=F.t)&&(F.u==='all'||e.user===F.u)&&(F.c==='all'||e.cat===F.c)&&(F.s==='all'||e.src===F.s)&&(F.k==='all'||kind(e)===F.k)&&(!q||(e.item+' '+e.cat+' '+e.src+' '+e.user).toLowerCase().includes(q))).sort((a,b)=>b.date.localeCompare(a.date)||String(b.id).localeCompare(String(a.id)));
   if(!L.length)return '<div class="card mute">No transactions match.</div>';
-  const pd=L.filter(e=>!e.planned),tIn=sum(pd.filter(e=>e.type==='in')),tOut=sum(pd.filter(isOut)),net=x=>x.type==='in'?x.amount:-x.amount,sh=L.slice(0,300),yr=today().slice(0,4);
+  const pd=L.filter(e=>!e.planned),tIn=sum(pd.filter(e=>e.type==='in')),tOut=sum(pd.filter(isOut)),tPay=sum(pd.filter(e=>e.type==='pay')),net=x=>x.type==='in'?x.amount:x.type==='pay'?0:-x.amount,sh=L.slice(0,300),yr=today().slice(0,4);
   const act=e=>`<button class="sm" data-edit="${e.id}">Edit</button>`+(e.planned?`<button class="sm" data-paid="${e.id}">Mark paid</button>`:'')+`<button class="sm" data-del="${e.id}">Delete</button>`;
   const tag=e=>e.planned?'<span class="tag">upcoming</span>':'';
   const dl=d=>new Date(d+'T00:00:00').toLocaleDateString('en',{weekday:'short',day:'numeric',month:'short',year:d.slice(0,4)===yr?undefined:'numeric'});
@@ -208,8 +220,8 @@ function txList(){
   sh.forEach(e=>{
     if(e.date!==last){last=e.date;h+=`<div class="dh"><span>${dl(e.date)}</span><span>${aed(sh.filter(x=>x.date===e.date&&!x.planned).reduce((a,x)=>a+net(x),0))}</span></div>`}
     h+=`<div class="row"><div>${esc(e.item||e.cat)}${tag(e)}<small>${esc(e.user)} · ${esc(e.src)} · ${esc(e.cat)}</small></div><div class="r ${e.type==='in'?'pos':''}">${e.type==='in'?'+':''}${aed(e.amount)}<br>${act(e)}</div></div>`});
-  const t=sh.map(e=>`<tr><td>${e.date}</td><td>${esc(e.item||'-')}${tag(e)}</td><td>${e.type==='in'?'<span class="pos">In</span>':'Out'}</td><td>${esc(e.user)}</td><td>${esc(e.src)}</td><td>${esc(e.cat)}</td><td class="r ${e.type==='in'?'pos':''}">${e.type==='in'?'+':''}${aed(e.amount)}</td><td>${act(e)}</td></tr>`).join('');
-  return `<div class="mute" style="margin:4px 0 8px">${L.length} transaction${L.length>1?'s':''} · In ${aed(tIn)} · Out ${aed(tOut)}${L.length>300?' · showing latest 300':''}</div>
+  const t=sh.map(e=>`<tr><td>${e.date}</td><td>${esc(e.item||'-')}${tag(e)}</td><td>${e.type==='in'?'<span class="pos">In</span>':e.type==='pay'?'Card pay':'Out'}</td><td>${esc(e.user)}</td><td>${esc(e.src)}</td><td>${esc(e.cat)}</td><td class="r ${e.type==='in'?'pos':''}">${e.type==='in'?'+':''}${aed(e.amount)}</td><td>${act(e)}</td></tr>`).join('');
+  return `<div class="mute" style="margin:4px 0 8px">${L.length} transaction${L.length>1?'s':''} · In ${aed(tIn)} · Out ${aed(tOut)}${tPay?' · Card payments '+aed(tPay):''}${L.length>300?' · showing latest 300':''}</div>
 <div class="card vm">${h}</div>
 <div class="card vw"><table class="t"><thead><tr><th>Date</th><th>Item</th><th>Type</th><th>Person</th><th>Fund source</th><th>Category</th><th class="r">Amount</th><th></th></tr></thead><tbody>${t}</tbody></table></div>`}
 const views={
@@ -219,7 +231,7 @@ tx(){
   const sel=(id,cur,o)=>`<select id="${id}">${o.map(x=>`<option value="${esc(x[0])}"${x[0]===cur?' selected':''}>${esc(x[1])}</option>`).join('')}</select>`;
   return `<input id="fq" placeholder="Search item, category, person…" value="${esc(F.q)}" style="margin-bottom:8px">
 <div class="fg2"><div><label style="margin:0 0 4px">From</label><input type="date" id="ff" value="${F.f}"></div><div><label style="margin:0 0 4px">To</label><input type="date" id="ft" value="${F.t}"></div></div>
-<div class="fg3">${sel('fk',F.k,[['all','Money In & Out'],['in','Money In'],['out','Money Out']])}${sel('fu',F.u,[['all','Everyone'],...members().map(u=>[u,u]),['Recurring','Recurring']])}${sel('fc',F.c,[['all','All categories'],...[...new Set([...S.cats,...S.inc])].sort((a,b)=>a.localeCompare(b)).map(c=>[c,c])])}${sel('fs',F.s,[['all','All sources'],...S.srcs.map(c=>[c,c])])}</div>
+<div class="fg3">${sel('fk',F.k,[['all','All types'],['in','Money In'],['out','Money Out'],['pay','Card payments']])}${sel('fu',F.u,[['all','Everyone'],...members().map(u=>[u,u]),['Recurring','Recurring']])}${sel('fc',F.c,[['all','All categories'],...[...new Set([...S.cats,...S.inc,...S.cards])].sort((a,b)=>a.localeCompare(b)).map(c=>[c,c])])}${sel('fs',F.s,[['all','All sources'],...S.srcs.map(c=>[c,c])])}</div>
 <div style="margin:0 0 8px"><button class="sm" data-reset="1" style="padding-left:0">Reset filters</button></div>
 <div id="txl">${txList()}</div>`},
 who(){return `<div class="card"><label style="margin-top:0">Tap your name</label><div class="chips">${members().map(u=>`<button class="chip${u===S.user?' on':''}" data-who="${esc(u)}">${esc(u)}</button>`).join('')||'<span class="mute">No one yet</span>'}</div>
@@ -240,33 +252,49 @@ dash(){
   const so={},sc={};cm.forEach(e=>{so[e.src]=(so[e.src]||0)+e.amount;sc[e.src]=(sc[e.src]||0)+1});
   const sl=Object.entries(so).sort((a,b)=>b[1]-a[1]);
   const c3=sl.map((x,i)=>`<div style="margin:12px 0"><div class="row" style="border:0;padding:0"><span>${esc(x[0])}${i===0?'<span class="tag" style="border-color:var(--acc);color:var(--acc)">most used</span>':''}</span><span class="r">${aed(x[1])} <small style="display:inline;font-weight:400">${sc[x[0]]} entries</small></span></div><div class="bar" style="height:8px;margin:5px 0 0"><i style="width:${x[1]/sl[0][1]*100}%;background:${COL[i%COL.length]}"></i></div></div>`).join('')||'<div class="mute" style="padding:20px 0">No spending yet this month</div>';
-  const dnow=+today().slice(8),planM=S.exp.filter(e=>e.planned&&isOut(e)&&e.date.startsWith(dm())),planIn=S.exp.filter(e=>e.planned&&!isOut(e)&&e.date.startsWith(dm()));
+  const dnow=+today().slice(8),planM=S.exp.filter(e=>e.planned&&isOut(e)&&e.date.startsWith(dm())),planIn=S.exp.filter(e=>e.planned&&e.type==='in'&&e.date.startsWith(dm()));
   const pendR=S.rec.filter(r=>!S.exp.some(e=>e.id==='r-'+r.id+'-'+dm())&&(dm()>mo()||(dm()===mo()&&r.day>dnow)));
-  const upTo=S.exp.filter(e=>!e.planned&&e.date.slice(0,7)<=dm()),mIn=sum(S.exp.filter(e=>!e.planned&&!isOut(e)&&e.date.startsWith(dm())));
-  const kSpent=sum(cm),kUp=sum(planM)+sum(pendR),kBal=sum(upTo.filter(e=>!isOut(e)))-sum(upTo.filter(isOut)),kSav=kBal+sum(planIn)-kUp;
+  const upTo=S.exp.filter(e=>!e.planned&&e.date.slice(0,7)<=dm());
+  const isCard=e=>S.cards.includes(e.src),totIn=sum(upTo.filter(e=>e.type==='in')),totPay=sum(upTo.filter(e=>e.type==='pay')),charges=sum(upTo.filter(e=>isOut(e)&&isCard(e))),cashOut=sum(upTo.filter(e=>isOut(e)&&!isCard(e)));
+  const kBal=totIn-cashOut-totPay,kHeld=charges-totPay,kAvail=kBal-kHeld;
+  const kSpent=sum(cm),kUp=sum(planM)+sum(pendR),kSav=kAvail+sum(planIn)-kUp,nUp=planM.length+pendR.length;
   const kpi=(t,v,sub,col,neg)=>`<div class="kpi" style="border-top-color:${col}"><small>${t}</small><b class="${neg&&v<0?'neg':''}">${aed(v)}</b><i>${sub}</i></div>`;
-  const nUp=planM.length+pendR.length;
-  const kpis=`<div class="kpis">${kpi('Current balance',kBal,'+'+aed(mIn)+' in · −'+aed(kSpent)+' out this month','var(--acc)',1)}${kpi('Total spent',kSpent,S.budget?Math.round(kSpent/S.budget*100)+'% of budget':'this month','var(--warn)')}${kpi('Total upcoming',kUp,nUp+' item'+(nUp===1?'':'s')+' still to pay','var(--mute)')}${kpi('Total savings',kSav,'after upcoming','var(--ok)',1)}</div>`;
+  const kpis=`<div class="kpis">${kpi('Current balance',kBal,'before card bills','var(--acc)',1)}${kpi('Held on cards',kHeld,'unpaid card spend','var(--warn)')}${kpi('Available balance',kAvail,'after card bills','var(--ok)',1)}${kpi('Total spent',kSpent,S.budget?Math.round(kSpent/S.budget*100)+'% of budget':'this month','var(--mute)')}${kpi('Total upcoming',kUp,nUp+' item'+(nUp===1?'':'s')+' to pay','var(--mute)')}${kpi('Total savings',kSav,'after upcoming','var(--acc)',1)}</div>`;
+  const refD=dm()===mo()?today():dm()+'-'+String(new Date(+dm().slice(0,4),+dm().slice(5),0).getDate()).padStart(2,'0');
+  let totBilled=0,anyCfg=false;
+  const cardRows=S.cards.map(c=>{
+    const ch=upTo.filter(e=>isOut(e)&&e.src===c),pd=sum(upTo.filter(e=>e.type==='pay'&&e.cat===c)),held=sum(ch)-pd,cf=S.cc[c];
+    if(!cf)return `<div class="row"><span>${esc(c)}<small>${aed(sum(cm.filter(e=>e.src===c)))} charged this month</small></span><span class="r">${aed(held)}</span></div>`;
+    anyCfg=true;
+    const cy=cycle(cf,refD),chB=sum(ch.filter(e=>e.date<=cy.st)),chU=sum(ch)-chB;
+    const billed=Math.max(0,chB-pd),unb=Math.max(0,chU-Math.max(0,pd-chB));
+    totBilled+=billed;
+    const when=cy.days<0?'<span style="color:var(--bad)">overdue</span>':cy.days===0?'today':'in '+cy.days+'d';
+    return `<div class="row"><div>${esc(c)}<small>${billed>0?'Billed '+aed(billed)+' · due '+fmtD(cy.due)+' ('+when+')':'Nothing billed'}</small><small>Unbilled ${aed(unb)} · next statement ${fmtD(cy.next)}</small></div><div class="r">${aed(held)}</div></div>`}).join('');
+  const cardHtml=cardRows?cardRows+(anyCfg?`<div class="row"><span>Billed, to pay</span><span class="r">${aed(totBilled)}</span></div>`:'')+`<div class="row"><b>Total held</b><span class="r">${aed(kHeld)}</span></div><div class="mute" style="font-size:12px">${S.cards.some(c=>!S.cc[c])?'Set statement and due days in Settings for the billed and unbilled split. ':''}Record card bill payments under Add, then Pay Card.</div>`:'<div class="mute">Add your credit card sources in Settings.</div>';
   const pill=(k,v,t,cur)=>`<button class="chip${cur===v?' on':''}" data-${k}="${v}">${t}</button>`;
   return `<div class="mp"><button class="chip" data-mp="-1" aria-label="Previous month">‹</button><input type="month" id="dmp" value="${dm()}"><button class="chip" data-mp="1" aria-label="Next month">›</button>${dm()!==mo()?'<button class="chip" data-mp="0">This month</button>':''}</div>
 ${kpis}
 <div class="chips" style="margin-bottom:8px">${pill('dk','cat','Category',S.dash)}${pill('dk','src','Fund source',S.dash)}${pill('dk','user','Person',S.dash)}</div>
 <div class="chips" style="margin-bottom:12px">${pill('dw','all','Everyone',S.scope)}${pill('dw','mine','Mine',S.scope)}</div>
-<div class="grid"><div class="sec"><h2>Distribution</h2><div class="card" style="text-align:center">${tot?donut(items,tot):'<div class="mute" style="padding:30px 0">No spending yet this month</div>'}
+<div class="grid"><div class="sec"><h2>Credit cards (held)</h2><div class="card">${cardHtml}</div></div><div class="sec"><h2>Distribution</h2><div class="card" style="text-align:center">${tot?donut(items,tot):'<div class="mute" style="padding:30px 0">No spending yet this month</div>'}
 <div style="text-align:left">${items.map((x,i)=>`<div class="row"><span><i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${COL[i%COL.length]};margin-right:8px"></i>${esc(x[0])}</span><span class="r">${aed(x[1])} <small style="display:inline;font-weight:400">${Math.round(x[1]/tot*100)}%</small></span></div>`).join('')}</div></div></div>
 <div class="sec"><h2>Budget vs actual by category</h2><div class="card">${c1}${leg([['var(--mute)','Budget'],['var(--acc)','Spent'],['var(--bad)','Over budget']])}${brow?'<div style="margin-top:8px">'+brow+'</div>':'<div class="mute" style="margin-top:8px">Set category budgets in Settings.</div>'}</div></div>
 <div class="sec"><h2>Spending by person, last 6 months</h2><div class="card">${c2}</div></div>
 <div class="sec"><h2>Fund sources used</h2><div class="card">${c3}</div></div></div>`},
 add(){
-  const out=S.addType!=='in',cur=out?S.cat:S.cati;
+  const t=S.addType==='in'||S.addType==='pay'?S.addType:'out',cur=S[{out:'cat',in:'cati',pay:'catp'}[t]];
+  const srcs=t==='out'?S.srcs:S.srcs.filter(x=>!S.cards.includes(x));
   const opts=(a,sel)=>'<option value="">Select…</option>'+[...a].sort((x,y)=>x.localeCompare(y)).map(x=>`<option${x===sel?' selected':''}>${esc(x)}</option>`).join('');
-  return `<div class="seg"><button class="out${out?' on':''}" data-type="out">Money Out</button><button class="in${out?'':' on'}" data-type="in">Money In</button></div>
+  const L={out:['What for','e.g. Carrefour','Paid from','Category'],in:['Description','e.g. November salary','Received in','Category'],pay:['Note','e.g. Statement payment','Pay from','Card being paid']}[t];
+  return `<div class="seg"><button class="out${t==='out'?' on':''}" data-type="out">Money Out</button><button class="in${t==='in'?' on':''}" data-type="in">Money In</button><button class="pay${t==='pay'?' on':''}" data-type="pay">Pay Card</button></div>
 <div class="card"><span class="cur">AED</span><input class="amt" id="amt" inputmode="decimal" placeholder="0" autocomplete="off">
-<label>${out?'What for':'Description'}</label><input id="item" placeholder="${out?'e.g. Carrefour':'e.g. November salary'}">
-<label>${out?'Paid from':'Received in'}</label><select id="asrc">${opts(S.srcs,S.src)}</select>
-<label>Category</label><select id="acat">${opts(out?S.cats:S.inc,cur)}</select>
+<label>${L[0]}</label><input id="item" placeholder="${L[1]}">
+<label>${L[2]}</label><select id="asrc">${opts(srcs,S.src)}</select>
+<label>${L[3]}</label><select id="acat">${opts(catsFor(t),cur)}</select>
+${t==='pay'?'<div class="mute" style="font-size:12px;margin-top:8px">Moves money from your account to the card. It clears the amount held and is not counted as spending.</div>':''}
 <label>Date <span style="font-weight:400">(leave blank for today)</span></label><input type="date" id="adate">
-<label><input type="checkbox" id="plan" style="width:auto;margin-right:8px">Upcoming (not ${out?'paid':'received'} yet)</label>
+<label><input type="checkbox" id="plan" style="width:auto;margin-right:8px">Upcoming (not settled yet)</label>
 <button class="go" id="save">Save</button></div>`},
 month(){
   const m=mo(),all=S.exp.filter(e=>e.date.startsWith(m)).sort((a,b)=>b.date.localeCompare(a.date));
@@ -297,6 +325,8 @@ set(){return `<div class="card"><label>Family members (comma separated)</label><
 <label>Fund sources (comma separated)</label><input id="ss" value="${esc(S.srcs.join(', '))}">
 <label>Money Out categories (comma separated)</label><input id="sc" value="${esc(S.cats.join(', '))}">
 <label>Money In categories (comma separated)</label><input id="sic" value="${esc(S.inc.join(', '))}">
+<label>Credit card sources (comma separated, must match Fund sources)</label><input id="scc" value="${esc(S.cards.join(', '))}">
+${S.cards.length?`<label>Card statement day and payment due day (1 to 31)</label>${S.cards.map(c=>`<div class="row"><span>${esc(c)}</span><span style="display:flex;gap:6px"><input data-cs="${esc(c)}" inputmode="numeric" placeholder="Stmt" value="${(S.cc[c]||{}).s||''}" style="width:72px;text-align:center"><input data-cd="${esc(c)}" inputmode="numeric" placeholder="Due" value="${(S.cc[c]||{}).d||''}" style="width:72px;text-align:center"></span></div>`).join('')}`:''}
 <label>Home chart groups spending by</label><select id="sd">${[['cat','Category'],['src','Fund source'],['user','Person']].map(o=>`<option value="${o[0]}"${S.dash===o[0]?' selected':''}>${o[1]}</option>`).join('')}</select>
 <label>Google Sheets web app URL</label><input id="su" value="${esc(S.url)}" placeholder="https://script.google.com/macros/s/.../exec">
 <button class="go" id="ssave">Save settings</button><button class="go" id="ssync" style="background:var(--card);color:var(--acc);border:1px solid var(--acc)">Sync now</button>
@@ -314,11 +344,11 @@ function openEdit(id){
   const e=S.exp.find(x=>x.id===id);if(!e)return;editId=id;
   const m=document.createElement('div');m.className='modal';m.id='emod';
   m.innerHTML=`<div class="sheet"><h1 style="font-size:18px">Edit transaction</h1>
-<label>Type</label><select id="etype"><option value="out"${e.type!=='in'?' selected':''}>Money Out</option><option value="in"${e.type==='in'?' selected':''}>Money In</option></select>
+<label>Type</label><select id="etype"><option value="out"${kind(e)==='out'?' selected':''}>Money Out</option><option value="in"${e.type==='in'?' selected':''}>Money In</option><option value="pay"${e.type==='pay'?' selected':''}>Card Payment</option></select>
 <div class="two"><div><label>Date</label><input type="date" id="edate" value="${esc(e.date)}"></div><div><label>Amount (AED)</label><input id="eamt" inputmode="decimal" value="${e.amount}"></div></div>
 <label>Description</label><input id="eitem" value="${esc(e.item||'')}">
 <label>Fund source</label><select id="esrc">${optsHtml(S.srcs,e.src)}</select>
-<label>Category</label><select id="ecat">${optsHtml(e.type==='in'?S.inc:S.cats,e.cat)}</select>
+<label>Category</label><select id="ecat">${optsHtml(catsFor(e.type),e.cat)}</select>
 <label><input type="checkbox" id="eplan" style="width:auto;margin-right:8px"${e.planned?' checked':''}>Upcoming (not settled yet)</label>
 <button class="go" data-esave="1">Save changes</button>
 <button class="sm" data-eclose="1" style="width:100%;margin-top:8px">Cancel</button>
@@ -345,13 +375,13 @@ document.addEventListener('click',async ev=>{
   if(t.dataset.dw){S.scope=t.dataset.dw;save();render();return}
   if(t.dataset.type){const a=$('#amt').value,it=$('#item').value,d=$('#adate').value,pl=$('#plan').checked;S.addType=t.dataset.type;save();render();$('#amt').value=a;$('#item').value=it;$('#adate').value=d;$('#plan').checked=pl;return}
   if(t.id==='save'){
-    const amount=parseFloat($('#amt').value),out=S.addType!=='in';
+    const amount=parseFloat($('#amt').value),ty=S.addType||'out',ck={out:'cat',in:'cati',pay:'catp'}[ty];
     if(!S.user){S.tab='who';render();return}
     if(!(amount>0)){toast('Enter an amount');return}
     const src=$('#asrc').value,cat=$('#acat').value;
-    if(!src||!cat){toast('Pick '+(out?'a fund source':'an account')+' and a category');return}
-    S.src=src;if(out)S.cat=cat;else S.cati=cat;
-    const e={id:uid(),date:$('#adate').value||today(),user:S.user,item:$('#item').value.trim(),amount,src,cat,planned:$('#plan').checked,type:out?'out':'in'};
+    if(!src||!cat){toast(ty==='pay'?'Pick an account and a card':'Pick a source and a category');return}
+    S.src=src;S[ck]=cat;
+    const e={id:uid(),date:$('#adate').value||today(),user:S.user,item:$('#item').value.trim()||(ty==='pay'?'Card payment':''),amount,src,cat,planned:$('#plan').checked,type:ty};
     S.exp.push(e);queue({a:'add',e});toast('Saved');render();return}
   if(t.dataset.edit){openEdit(t.dataset.edit);return}
   if(t.dataset.eclose){closeEdit();return}
@@ -374,9 +404,11 @@ document.addEventListener('click',async ev=>{
   if(t.id==='ssave'){
     const cb={};document.querySelectorAll('[data-cb]').forEach(i=>{const v=parseFloat(i.value);if(v>0)cb[i.dataset.cb]=v});
     const list=v=>v.split(',').map(x=>x.trim()).filter(Boolean);
-    const f={users:list($('#sm').value),budget:parseFloat($('#sb').value)||0,srcs:list($('#ss').value),cats:list($('#sc').value),url:$('#su').value.trim(),dash:$('#sd').value,inc:list($('#sic').value)};
+    const sM={},dM={},cc={};document.querySelectorAll('[data-cs]').forEach(i=>sM[i.dataset.cs]=parseInt(i.value));document.querySelectorAll('[data-cd]').forEach(i=>dM[i.dataset.cd]=parseInt(i.value));
+    Object.keys(sM).forEach(c=>{const a=sM[c],b=dM[c];if(a>=1&&a<=31&&b>=1&&b<=31)cc[c]={s:a,d:b}});
+    const f={users:list($('#sm').value),budget:parseFloat($('#sb').value)||0,srcs:list($('#ss').value),cats:list($('#sc').value),url:$('#su').value.trim(),dash:$('#sd').value,inc:list($('#sic').value),cards:list($('#scc').value)};
     if(f.url!==S.url){S.url=f.url;S.loaded=false;await pull()}
-    Object.assign(S,{users:f.users,budget:f.budget,srcs:f.srcs,cats:f.cats,dash:f.dash,inc:f.inc.length?f.inc:S.inc,cb});
+    Object.assign(S,{users:f.users,budget:f.budget,srcs:f.srcs,cats:f.cats,dash:f.dash,inc:f.inc.length?f.inc:S.inc,cards:f.cards,cc,cb});
     queue({a:'cfg',cfg:cfg()});render();toast('Saved');return}
   if(t.id==='ssync'){toast('Syncing…');await sync();toast(S.err?'Sync failed, see message':'Synced');return}
   if(t.id==='stest'){
@@ -391,8 +423,8 @@ document.addEventListener('click',async ev=>{
 });
 document.addEventListener('change',ev=>{const id=ev.target.id;
   if(id==='asrc'){S.src=ev.target.value;save()}
-  if(id==='acat'){if(S.addType==='in')S.cati=ev.target.value;else S.cat=ev.target.value;save()}
-  if(id==='etype')$('#ecat').innerHTML=optsHtml(ev.target.value==='in'?S.inc:S.cats,'')});
+  if(id==='acat'){S[{out:'cat',in:'cati',pay:'catp'}[S.addType||'out']]=ev.target.value;save()}
+  if(id==='etype')$('#ecat').innerHTML=optsHtml(catsFor(ev.target.value),'')});
 document.addEventListener('click',ev=>{if(ev.target.id==='emod')closeEdit()});
 document.addEventListener('input',e=>{if(e.target.id==='fq'){F.q=e.target.value;$('#txl').innerHTML=txList()}});
 document.addEventListener('change',e=>{const k={ff:'f',ft:'t',fk:'k',fu:'u',fc:'c',fs:'s'}[e.target.id];if(k){F[k]=e.target.value;$('#txl').innerHTML=txList()}if(e.target.id==='dmp'){DM=e.target.value||null;render()}});
